@@ -50,66 +50,45 @@ def get_hist_avg_weather(NumOfLookbackDays=21, NumOfForecastDays=14):
     return output_hist_avgs
 
 
-def get_past_actual_weather(NumOfLookbackDays=22, NumOfForecastDays=-1):   # 21, -1
+def get_past_actual_weather(cityId, NumOfLookbackDays=22, NumOfForecastDays=0):   # 22, -1
     pd_timestamps = get_pd_timestamps_from_now(NumOfLookbackDays, NumOfForecastDays)
     StartDate = pd_timestamps[0].strftime('%m/%d/%Y')
     EndDate = pd_timestamps[-1].strftime('%m/%d/%Y')
-    dfs =[]
-    for cityId in ['CYYC', 'CYEG']:
-        d_df = get_historical_daily_weather(StartDate, EndDate, cityId)
-        h_df = get_historical_hourly_weather(StartDate, EndDate, cityId)
-        df = pd.merge(d_df, h_df, on='date')
-        city = 'CGY' if cityId=='CYYC' else 'EDM'
-        columnnames = ['date', city+' Min Temp (Celsius)', city+' Max Temp (Celsius)', 
-                       city+' Avg Temp (Celsius)', city+' Avg Hourly Temp (Celsius)', 
-                       city+' Avg Windspeed (mph)']
-        df.columns = columnnames
-        dfs.append(df)
-    final_df = pd.merge(dfs[0], dfs[1], on='date')
-    return final_df
+    d_df = get_historical_daily_weather(StartDate, EndDate, cityId)
+    h_df = get_historical_hourly_weather(StartDate, EndDate, cityId)   # When you query during evening, the hourly data for last                                                                        # night might not be avaiable yet.
+    df = pd.merge(d_df, h_df, on='date')
+    columnnames = ['date', 'Min Temp (Celsius)', 'Max Temp (Celsius)', 
+                   'Avg Temp (Celsius)', 'Avg Hourly Temp (Celsius)', 
+                   'Avg Windspeed (mph)']
+    df.columns = columnnames
+    return df
 
 
-def get_forecast_weather():
-    dates1, Cgy_AverTemp, Edm_AverTemp = get_forecast_daily_average_temp()
-    dates2, Cgy_MinTemp, Cgy_MaxTemp, Edm_MinTemp, Edm_MaxTemp = get_forecast_daily_MinMax_temp()
-    cgy_h_df = get_forecast_hourly_weather('CYYC')
-    edm_h_df = get_forecast_hourly_weather('CYEG')
-
-    array = np.array([dates1, Cgy_MaxTemp, Cgy_MinTemp, Cgy_AverTemp,
-                      cgy_h_df['Cgy_hourly_avg_temperature'].values.tolist(),
-                      cgy_h_df['Cgy_hourly_avg_wind_speed'].values.tolist(),
-                      Edm_MaxTemp, Edm_MinTemp, Edm_AverTemp,
-                      edm_h_df['Edm_hourly_avg_temperature'].values.tolist(),
-                      edm_h_df['Edm_hourly_avg_wind_speed'].values.tolist()])
-
-    forecast_weather = pd.DataFrame(array.transpose())
-
-    city = 'CGY' #'EDM'
-    columnnames = ['date', city+' Max Temp (Celsius)', city+' Min Temp (Celsius)', 
-                   city+' Avg Temp (Celsius)', city+' Avg Hourly Temp (Celsius)',
-                   city+' Avg Windspeed (mph)']
-    city = 'EDM'
-    columnnames += [city+' Max Temp (Celsius)', city+' Min Temp (Celsius)', 
-                    city+' Avg Temp (Celsius)', city+' Avg Hourly Temp (Celsius)',
-                    city+' Avg Windspeed (mph)']
-    forecast_weather.columns = columnnames
-    return forecast_weather
+def get_forecast_weather(cityId):
+    df_DailyMinMax = get_forecast_daily_MinMax_temp(cityId)
+    df_DailyAverTemp = get_forecast_daily_average_temp(cityId)
+    df_hourly = get_forecast_hourly_weather(cityId)
+    df = pd.merge(df_DailyMinMax, df_DailyAverTemp, on='date')
+    df = pd.merge(df, df_hourly, on='date')
+    columnnames = ['date', 'Min Temp (Celsius)', 'Max Temp (Celsius)', 
+                   'Avg Temp (Celsius)', 'Avg Hourly Temp (Celsius)', 
+                   'Avg Windspeed (mph)']
+    df.columns = columnnames
+    return df
 
 
-def get_forecast_hourly_weather(city_id):   # CYYC=Calgary.  CYEG=Edmonton
+def get_forecast_hourly_weather(cityId):   # CYYC=Calgary.  CYEG=Edmonton
     temp_url = "https://www.wsitrader.com/Account/Login?ReturnUrl=/Services/CSVDownloadService.svc/GetHourlyForecast?" \
-               "region=NA%26SiteId={}%26TempUnits=C".format(city_id)
+               "region=NA%26SiteId={}%26TempUnits=C".format(cityId)
 
     r = requests.post(temp_url, data={"Account": 'atco', "Password":'weather1', 
                      'Profile': 'Kui.Pan@atco.com', 'Action': 'Enter'}) 
     decoded_content = r.content.decode('utf-8')
     cr = csv.reader(decoded_content.splitlines(), delimiter=',')
     my_list = list(cr)
-
     df = pd.DataFrame(my_list[1:])
     df.columns = df.iloc[0,:].values
     df = df.iloc[1:,:]
-
     df['Temp'] = df[' Temp'].apply(lambda x: float(x))
     df['Wind'] = df[' WindSpeed(mph)'].apply(lambda x: float(x))
     df['LocalTime'] = df['LocalTime'].apply(lambda x: datetime.strptime(x, '%m/%d/%Y %I:%M:%S %p'))
@@ -121,19 +100,13 @@ def get_forecast_hourly_weather(city_id):   # CYYC=Calgary.  CYEG=Edmonton
         aver_temp.append(np.mean(df['Temp'].values[lower_bound:upper_bound]))
         aver_wind.append(np.mean(df['Wind'].values[lower_bound:upper_bound]))
     dates = pd.to_datetime(dates)
-    if city_id == 'CYYC':
-        city = 'Cgy'
-    else:
-        city = 'Edm'
-        
     df = pd.DataFrame()
     df['date'] = dates
-    df[city+'_hourly_avg_temperature'] = aver_temp
-    df[city+'_hourly_avg_wind_speed'] = aver_wind
+    df['hourly_avg_temperature'] = aver_temp
+    df['hourly_avg_wind_speed'] = aver_wind
     return df
 
-
-def get_forecast_daily_average_temp():    
+def get_forecast_daily_average_temp(cityId):    
     temp_url = "https://www.wsitrader.com/Account/Login?ReturnUrl=/Services/" \
     "CSVDownloadService.svc/GetCityTableForecast?" \
     "IsCustom=false%26CurrentTabName=AverageTemp%26TempUnits=C%26Id=AESO%26Region=NA" 
@@ -143,39 +116,51 @@ def get_forecast_daily_average_temp():
     decoded_content = r.content.decode('utf-8')
     cr = csv.reader(decoded_content.splitlines(), delimiter=',')
     my_list = list(cr)
+    df = pd.DataFrame(my_list)
+    # We find which row we need to keep based on the cityId
+    row_num = -1
+    for i, city_name in enumerate(df.iloc[:,0].values):
+        if cityId in str(city_name):
+            row_num = i
+            break        
     dates = [datetime.strptime(x, '%m/%d/%Y') for x in my_list[1][1:16]]
-    Cgy_AverTemp = [float(x) for x in my_list[3][1:16]]
-    Edm_AverTemp = [float(x) for x in my_list[4][1:16]]
-    return [dates, Cgy_AverTemp, Edm_AverTemp]
+    AverTemp = [float(x) for x in my_list[row_num][1:16]]
+    output_df = pd.DataFrame()
+    output_df['date'] = dates
+    output_df['avg_temp'] = AverTemp
+    return output_df
 
 
-def get_forecast_daily_MinMax_temp():
+def get_forecast_daily_MinMax_temp(cityId):
     temp_url = "https://www.wsitrader.com/Account/Login?ReturnUrl=/Services/" \
                "CSVDownloadService.svc/GetCityTableForecast?" \
                "IsCustom=false%26CurrentTabName=MinMax%26TempUnits=C%26Id=AESO%26Region=NA" 
-
     r = requests.post(temp_url, data={"Account": 'atco', "Password":'weather1', 
                      'Profile': 'Kui.Pan@atco.com', 'Action': 'Enter'}) 
     decoded_content = r.content.decode('utf-8')
     cr = csv.reader(decoded_content.splitlines(), delimiter=',')
     my_list = list(cr)
-
+    df = pd.DataFrame(my_list)
+    # We find which row we need to keep based on the cityId
+    row_num = -1
+    for i, city_name in enumerate(df.iloc[:,0].values):
+        if cityId in str(city_name):
+            row_num = i
+            break
     dates_double = [datetime.strptime(x, '%m/%d/%Y') for x in my_list[1][1:-2]]
-    Cal_MinMax = my_list[3][1:-2]
-    Edm_MinMax = my_list[4][1:-2]
-    dates, Cal_MinTemp, Cal_MaxTemp = [], [], []
-    Edm_MinTemp, Edm_MaxTemp = [], []
+    MinMax = my_list[row_num][1:-2]
+    dates, MinTemp, MaxTemp = [], [], []
     for i in range(15):
         dates.append(dates_double[i*2])
-        Cal_MinTemp.append(Cal_MinMax[i*2])
-        Cal_MaxTemp.append(Cal_MinMax[i*2+1])
-        Edm_MinTemp.append(Edm_MinMax[i*2])
-        Edm_MaxTemp.append(Edm_MinMax[i*2+1])  
-    Cal_MinTemp = [float(x) for x in Cal_MinTemp]
-    Cal_MaxTemp = [float(x) for x in Cal_MaxTemp]
-    Edm_MinTemp = [float(x) for x in Edm_MinTemp]
-    Edm_MinTemp = [float(x) for x in Edm_MinTemp]
-    return [dates, Cal_MinTemp, Cal_MaxTemp, Edm_MinTemp, Edm_MaxTemp]
+        MinTemp.append(MinMax[i*2])
+        MaxTemp.append(MinMax[i*2+1])
+    MinTemp = [float(x) for x in MinTemp]
+    MaxTemp = [float(x) for x in MaxTemp]
+    output_df = pd.DataFrame()
+    output_df['date'] = dates
+    output_df['min_temp'] = MinTemp
+    output_df['max_temp'] = MaxTemp
+    return output_df
 
 
 def get_historical_daily_weather(StartDate, EndDate, CityId):  #01/01/2021, 02/20/2021, "CYYC"/"CYEG"
@@ -224,14 +209,10 @@ def get_historical_hourly_weather(StartDate, EndDate, CityId):  #01/01/2021, 02/
         aver_temp.append(np.mean(df['temp'].values[lower_bound:upper_bound]))
         aver_wind.append(np.mean(df['wind'].values[lower_bound:upper_bound]))
     dates = pd.to_datetime(dates)
-    if CityId == 'CYYC':
-        city = 'Cgy'
-    else:
-        city = 'Edm'
     final_df = pd.DataFrame()
     final_df['date'] = dates
-    final_df[city+'_hourly_avg_temperature'] = aver_temp
-    final_df[city+'_hourly_avg_wind_speed'] = aver_wind
+    final_df['hourly_avg_temperature'] = aver_temp
+    final_df['hourly_avg_wind_speed'] = aver_wind
     return final_df
 
 

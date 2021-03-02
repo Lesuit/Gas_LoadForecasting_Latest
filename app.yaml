@@ -7,6 +7,6 @@ runtime_config:
 resources:
     cpu: 2
     memory_gb: 6
-    disk_size_gb: 20
+    disk_size_gb: 10
                              
 entrypoint: gunicorn -b :$PORT main:app

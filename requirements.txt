@@ -1,3 +1,4 @@
+holidays==0.10.5.2 
 h5py==2.10.0
 xlrd==1.2.0
 openpyxl==3.0.5

@@ -8,7 +8,7 @@ import app_config
 import msal
 
 # Load trained ML models
-Models = LoadTrainedModels()
+Models_Dict, scaler_Dict, ymax_Dict = LoadTrainedModels()
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/tmp'
@@ -19,8 +19,8 @@ Session(app)
 # generate http scheme when this sample is running on localhost,
 # and to generate https scheme when it is deployed behind reversed proxy.
 # See also https://flask.palletsprojects.com/en/1.0.x/deploying/wsgi-standalone/#proxy-setups
-from werkzeug.middleware.proxy_fix import ProxyFix
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+#from werkzeug.middleware.proxy_fix import ProxyFix
+#app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 
 @app.route('/')
@@ -67,9 +67,9 @@ def logout():
 def upload_file():
 #    if not session.get("user"):
 #        return redirect(url_for("login"))
-#    token = _get_token_from_cache(app_config.SCOPE)
-#    if not token:
-#        return redirect(url_for("login"))
+    token = _get_token_from_cache(app_config.SCOPE)
+    if not token:
+        return redirect(url_for("login"))
     if request.method == 'POST':
         # check if the post request has the file part
         if 'file' not in request.files:
@@ -89,7 +89,7 @@ def upload_file():
             upload_cloud_storage(save_path)
             print ("saved site counts file to the cloud!")
             try:
-                output_file_name = GetLoadForecastingResult(Models, filename)
+                output_file_name = GetLoadForecastingResult(Models_Dict, scaler_Dict, ymax_Dict, filename)
                 print ("Successfully generated forecast report!", "\n")
                 #send file name as parameter to downlad
                 return redirect('/downloadfile/'+ output_file_name)
@@ -103,18 +103,18 @@ def upload_file():
 def errorfile():
 #    if not session.get("user"):
 #        return redirect(url_for("login"))
-#    token = _get_token_from_cache(app_config.SCOPE)
-#    if not token:
-#        return redirect(url_for("login"))
+    token = _get_token_from_cache(app_config.SCOPE)
+    if not token:
+        return redirect(url_for("login"))
     return render_template('error_page.html')
 
 @app.route("/downloadfile/<filename>", methods = ['GET'])
 def download_file(filename):
 #    if not session.get("user"):
 #        return redirect(url_for("login"))
-#    token = _get_token_from_cache(app_config.SCOPE)
-#    if not token:
-#        return redirect(url_for("login"))
+    token = _get_token_from_cache(app_config.SCOPE)
+    if not token:
+        return redirect(url_for("login"))
     return render_template('download.html',value=filename)
 
 
@@ -122,9 +122,9 @@ def download_file(filename):
 def return_files_tut(filename):
 #    if not session.get("user"):
 #        return redirect(url_for("login"))
-#    token = _get_token_from_cache(app_config.SCOPE)
-#    if not token:
-#        return redirect(url_for("login"))
+    token = _get_token_from_cache(app_config.SCOPE)
+    if not token:
+        return redirect(url_for("login"))
     download_cloud_storage(filename)
     print ("Successfully downloaded ML report from Cloud Storage!!", "\n")
     file_path = '/tmp/' + filename
